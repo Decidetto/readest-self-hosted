@@ -26,6 +26,7 @@ import {
   READEST_CHANGELOG_FILE,
   READEST_UPDATER_PUBKEY,
 } from '@/services/constants';
+import { getAndroidUpdatePlatform } from '@/helpers/androidUpdatePlatform';
 import Dialog from '@/components/Dialog';
 import Link from './Link';
 
@@ -134,12 +135,14 @@ export const UpdaterContent = ({
       const response = await fetch(READEST_UPDATER_FILE);
       const data = await response.json();
       if (semver.gt(data.version, currentVersion)) {
-        const OS_ARCH = osArch();
-        const platformKey = OS_ARCH === 'aarch64' ? 'android-arm64' : 'android-universal';
-        const arch = OS_ARCH === 'aarch64' ? 'arm64' : 'universal';
-        const downloadUrl = data.platforms[platformKey]?.url as string;
+        const platform = getAndroidUpdatePlatform(osArch(), data.platforms);
+        const downloadUrl = platform ? (data.platforms[platform.key]?.url as string) : '';
+        if (!downloadUrl || !platform) {
+          console.warn('No compatible Android update asset was found');
+          return;
+        }
         const apkFilePath = await appService.resolveFilePath(
-          `Readest_${data.version}_${arch}.apk`,
+          `Readest_${data.version}_${platform.assetArch}.apk`,
           'Cache',
         );
         setUpdate({
