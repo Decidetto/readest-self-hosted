@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getStripe } from '@/libs/payment/stripe/server';
 import { validateUserAndToken } from '@/utils/access';
 import { createSupabaseAdminClient } from '@/utils/supabase';
+import { getRuntimeCapabilities } from '@/services/runtimeConfig';
 
 export async function POST(request: NextRequest) {
+  if (!getRuntimeCapabilities().billingEnabled) {
+    return NextResponse.json({ error: 'Billing is not enabled' }, { status: 404 });
+  }
+
   const { user, token } = await validateUserAndToken(request.headers.get('authorization'));
   if (!user || !token) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 403 });

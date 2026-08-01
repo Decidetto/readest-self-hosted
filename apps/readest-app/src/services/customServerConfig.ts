@@ -1,3 +1,13 @@
+export type ReadestDeploymentMode = 'hosted' | 'self-hosted';
+
+export interface ReadestRuntimeCapabilities {
+  billingEnabled: boolean;
+  emailInEnabled: boolean;
+  emailInRequiresPremium: boolean;
+  cloudSyncRequiresPremium: boolean;
+  ttsCacheRequiresPremium: boolean;
+}
+
 export interface PublicReadestClientConfig {
   apiBaseUrl?: string | undefined;
   supabaseUrl?: string | undefined;
@@ -5,13 +15,13 @@ export interface PublicReadestClientConfig {
   objectStorageType?: string | undefined;
   storageFixedQuota?: number | undefined;
   translationFixedQuota?: number | undefined;
+  deploymentMode?: ReadestDeploymentMode | undefined;
+  capabilities?: ReadestRuntimeCapabilities | undefined;
 }
 
-export interface CustomServerConfig {
+export interface CustomServerConfig extends PublicReadestClientConfig {
   serverBaseUrl: string;
   apiBaseUrl: string;
-  supabaseUrl?: string | undefined;
-  supabaseAnonKey?: string | undefined;
   fetchedAt: number;
 }
 
@@ -200,6 +210,47 @@ const assertNoDangerousSecrets = (config: unknown) => {
   }
 };
 
+const optionalNumber = (value: unknown, field: string): number | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new CustomServerConfigError('invalid-config', `${field} must be a non-negative number.`);
+  }
+  return value;
+};
+
+const optionalBoolean = (value: unknown, field: string): boolean | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') {
+    throw new CustomServerConfigError('invalid-config', `${field} must be a boolean.`);
+  }
+  return value;
+};
+
+const validateCapabilities = (value: unknown): ReadestRuntimeCapabilities | undefined => {
+  if (value === undefined) return undefined;
+  if (!isPlainObject(value)) {
+    throw new CustomServerConfigError('invalid-config', 'capabilities must be an object.');
+  }
+
+  const fields = [
+    'billingEnabled',
+    'emailInEnabled',
+    'emailInRequiresPremium',
+    'cloudSyncRequiresPremium',
+    'ttsCacheRequiresPremium',
+  ] as const;
+  const capabilities = Object.fromEntries(
+    fields.map((field) => [field, optionalBoolean(value[field], `capabilities.${field}`)]),
+  );
+  if (Object.values(capabilities).some((entry) => entry === undefined)) {
+    throw new CustomServerConfigError(
+      'invalid-config',
+      'capabilities must contain every supported capability flag.',
+    );
+  }
+  return capabilities as unknown as ReadestRuntimeCapabilities;
+};
+
 const validatePublicConfig = (
   serverBaseUrl: string,
   config: unknown,
@@ -217,6 +268,8 @@ const validatePublicConfig = (
   const apiBaseUrlValue = config['apiBaseUrl'];
   const supabaseUrlValue = config['supabaseUrl'];
   const supabaseAnonKeyValue = config['supabaseAnonKey'];
+  const objectStorageTypeValue = config['objectStorageType'];
+  const deploymentModeValue = config['deploymentMode'];
 
   const apiBaseUrl =
     typeof apiBaseUrlValue === 'string' && apiBaseUrlValue.trim()
@@ -239,10 +292,29 @@ const validatePublicConfig = (
     );
   }
 
+  if (
+    deploymentModeValue !== undefined &&
+    deploymentModeValue !== 'hosted' &&
+    deploymentModeValue !== 'self-hosted'
+  ) {
+    throw new CustomServerConfigError(
+      'invalid-config',
+      'deploymentMode must be hosted or self-hosted.',
+    );
+  }
+
   return {
     apiBaseUrl,
     supabaseUrl,
     supabaseAnonKey,
+    objectStorageType:
+      typeof objectStorageTypeValue === 'string' && objectStorageTypeValue.trim()
+        ? objectStorageTypeValue.trim()
+        : undefined,
+    storageFixedQuota: optionalNumber(config['storageFixedQuota'], 'storageFixedQuota'),
+    translationFixedQuota: optionalNumber(config['translationFixedQuota'], 'translationFixedQuota'),
+    deploymentMode: deploymentModeValue as ReadestDeploymentMode | undefined,
+    capabilities: validateCapabilities(config['capabilities']),
   };
 };
 
@@ -312,6 +384,11 @@ export const resolveCustomServerConfig = async (
     apiBaseUrl: publicConfig.apiBaseUrl ?? serverBaseUrl,
     supabaseUrl: publicConfig.supabaseUrl,
     supabaseAnonKey: publicConfig.supabaseAnonKey,
+    objectStorageType: publicConfig.objectStorageType,
+    storageFixedQuota: publicConfig.storageFixedQuota,
+    translationFixedQuota: publicConfig.translationFixedQuota,
+    deploymentMode: publicConfig.deploymentMode,
+    capabilities: publicConfig.capabilities,
     fetchedAt: options.now?.() ?? Date.now(),
   };
 };
@@ -328,6 +405,21 @@ export const saveCustomServerConfig = async (
     const { clearAuthSessionForServerChange } = await import('@/helpers/auth');
     await clearAuthSessionForServerChange();
   }
+};
+
+/**
+ * Refresh the selected server's public policy without discarding the cached
+ * configuration when the server is temporarily unavailable.
+ */
+export const refreshCustomServerConfig = async (
+  options: ResolveCustomServerConfigOptions = {},
+): Promise<CustomServerConfig | null> => {
+  const current = loadCustomServerConfig();
+  if (!current) return null;
+
+  const refreshed = await resolveCustomServerConfig(current.serverBaseUrl, options);
+  await saveCustomServerConfig(refreshed);
+  return refreshed;
 };
 
 export const loadCustomServerConfig = (): CustomServerConfig | null => {
@@ -360,6 +452,23 @@ export const loadCustomServerConfig = (): CustomServerConfig | null => {
         typeof parsed['supabaseAnonKey'] === 'string'
           ? (parsed['supabaseAnonKey'] as string)
           : undefined,
+      objectStorageType:
+        typeof parsed['objectStorageType'] === 'string'
+          ? (parsed['objectStorageType'] as string)
+          : undefined,
+      storageFixedQuota:
+        typeof parsed['storageFixedQuota'] === 'number'
+          ? (parsed['storageFixedQuota'] as number)
+          : undefined,
+      translationFixedQuota:
+        typeof parsed['translationFixedQuota'] === 'number'
+          ? (parsed['translationFixedQuota'] as number)
+          : undefined,
+      deploymentMode:
+        parsed['deploymentMode'] === 'hosted' || parsed['deploymentMode'] === 'self-hosted'
+          ? parsed['deploymentMode']
+          : undefined,
+      capabilities: validateCapabilities(parsed['capabilities']),
       fetchedAt,
     };
   } catch {
@@ -387,6 +496,11 @@ export const getCustomServerRuntimeConfig = (): PublicReadestClientConfig | null
     apiBaseUrl: config.apiBaseUrl,
     supabaseUrl: config.supabaseUrl,
     supabaseAnonKey: config.supabaseAnonKey,
+    objectStorageType: config.objectStorageType,
+    storageFixedQuota: config.storageFixedQuota,
+    translationFixedQuota: config.translationFixedQuota,
+    deploymentMode: config.deploymentMode,
+    capabilities: config.capabilities,
   };
 };
 

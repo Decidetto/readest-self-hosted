@@ -4,7 +4,8 @@ import { corsAllMethods, runMiddleware } from '@/utils/cors';
 import {
   EMAIL_IN_PLANS,
   getUserProfilePlan,
-  isEmailInPlan,
+  isEmailInAllowed,
+  isEmailInEnabled,
   validateUserAndToken,
 } from '@/utils/access';
 import {
@@ -32,6 +33,10 @@ const fullAddress = (localPart: string) => `${localPart}@${SEND_EMAIL_DOMAIN}`;
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   await runMiddleware(req, res, corsAllMethods);
 
+  if (!isEmailInEnabled()) {
+    return res.status(404).json({ error: 'Email ingestion is not enabled' });
+  }
+
   const { user, token } = await validateUserAndToken(req.headers['authorization']);
   if (!user || !token) {
     return res.status(403).json({ error: 'Not authenticated' });
@@ -41,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // card on receiving this response, so the structured body (code +
   // requiredPlans) matters — UI keys off it.
   const plan = getUserProfilePlan(token);
-  if (!isEmailInPlan(plan)) {
+  if (!isEmailInAllowed(plan)) {
     return res.status(403).json({
       error: 'Email-in is available on the Plus, Pro, and Lifetime plans',
       code: 'plan_required',

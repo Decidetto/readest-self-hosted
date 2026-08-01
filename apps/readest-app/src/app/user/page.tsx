@@ -15,6 +15,7 @@ import type { PlanType } from '@/types/quota';
 import { navigateToLibrary } from '@/utils/nav';
 import { eventDispatcher } from '@/utils/event';
 import { isTauriAppPlatform } from '@/services/environment';
+import { getDeploymentMode, getRuntimeCapabilities } from '@/services/runtimeConfig';
 import { getPlanDetails } from './utils/plan';
 import { Toast } from '@/components/Toast';
 import {
@@ -91,10 +92,13 @@ const ProfilePage = () => {
   useTheme({ systemUIVisible: false });
 
   const { quotas, userProfilePlan = 'free' } = useQuotaStats();
+  const { billingEnabled } = getRuntimeCapabilities();
+  const selfHosted = getDeploymentMode() === 'self-hosted';
   const { handleLogout, handleResetPassword, handleUpdateEmail, handleConfirmDelete } =
     useUserActions();
 
   const { availablePlans, iapAvailable } = useAvailablePlans({
+    enabled: billingEnabled,
     hasIAP: appService?.hasIAP || false,
     onError: useCallback(
       (message: string) => {
@@ -309,6 +313,7 @@ const ProfilePage = () => {
                     userFullName={userFullName}
                     userEmail={userEmail}
                     planDetails={userPlanDetails}
+                    selfHosted={selfHosted}
                   />
 
                   {!showStorageManager && !showSharedLinksManager && !showSyncManager && (
@@ -331,21 +336,24 @@ const ProfilePage = () => {
                   </div>
                 ) : (
                   <>
-                    <div className='flex flex-col gap-y-8 sm:px-6'>
-                      <PlansComparison
-                        availablePlans={availablePlans}
-                        userPlan={userProfilePlan}
-                        onSubscribe={
-                          appService.hasIAP && iapAvailable
-                            ? handleIAPSubscribe
-                            : handleStripeSubscribe
-                        }
-                      />
-                    </div>
+                    {billingEnabled && (
+                      <div className='flex flex-col gap-y-8 sm:px-6'>
+                        <PlansComparison
+                          availablePlans={availablePlans}
+                          userPlan={userProfilePlan}
+                          onSubscribe={
+                            appService.hasIAP && iapAvailable
+                              ? handleIAPSubscribe
+                              : handleStripeSubscribe
+                          }
+                        />
+                      </div>
+                    )}
                     <div className='flex flex-col gap-y-8 px-6'>
                       <AccountActions
                         userPlan={userProfilePlan}
                         iapAvailable={iapAvailable}
+                        billingEnabled={billingEnabled}
                         onLogout={handleLogout}
                         onResetPassword={handleResetPassword}
                         onUpdateEmail={handleUpdateEmail}

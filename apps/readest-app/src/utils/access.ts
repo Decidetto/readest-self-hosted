@@ -4,7 +4,7 @@ import { UserPlan } from '@/types/quota';
 import { DEFAULT_DAILY_TRANSLATION_QUOTA, DEFAULT_STORAGE_QUOTA } from '@/services/constants';
 import { isWebAppPlatform } from '@/services/environment';
 import { getDailyUsage } from '@/services/translators/utils';
-import { getRuntimeConfig } from '@/services/runtimeConfig';
+import { getRuntimeCapabilities, getRuntimeConfig } from '@/services/runtimeConfig';
 
 interface Token {
   plan: UserPlan;
@@ -45,6 +45,15 @@ export const EMAIL_IN_PLANS: readonly UserPlan[] = ['plus', 'pro', 'purchase'];
 export const isEmailInPlan = (plan: UserPlan): boolean =>
   (EMAIL_IN_PLANS as readonly UserPlan[]).includes(plan);
 
+export const isEmailInEnabled = (): boolean => getRuntimeCapabilities().emailInEnabled;
+
+export const isEmailInAllowed = (plan: UserPlan): boolean => {
+  const capabilities = getRuntimeCapabilities();
+  return (
+    capabilities.emailInEnabled && (!capabilities.emailInRequiresPremium || isEmailInPlan(plan))
+  );
+};
+
 /**
  * Plans that include third-party cloud sync (WebDAV / Google Drive): any paid
  * plan — Plus, Pro, and Lifetime (`purchase`). Free users see an upgrade prompt
@@ -57,23 +66,16 @@ export const isCloudSyncInPlan = (plan: UserPlan): boolean =>
   (CLOUD_SYNC_PLANS as readonly UserPlan[]).includes(plan);
 
 /**
- * Master switch for the third-party cloud-sync premium paywall. ON: cloud
- * sync (WebDAV / Google Drive / S3) requires a {@link CLOUD_SYNC_PLANS} plan —
- * free users see the provider rows with a Premium badge and an upgrade route
- * instead of the config sub-pages, and a downgraded account's still-selected
- * provider is paused (never a silent fallback to Readest Cloud uploads, #4959).
- * Every gate goes through {@link isCloudSyncAllowed}, so this flag is the
- * whole toggle.
+ * Hosted-service default retained for callers and tests that inspect the
+ * product policy. Runtime access decisions use the server capability below.
  */
 export const CLOUD_SYNC_REQUIRES_PREMIUM = true;
 
 /**
- * Whether third-party cloud sync is available for a plan. Falls back to the
- * {@link isCloudSyncInPlan} paywall while {@link CLOUD_SYNC_REQUIRES_PREMIUM}
- * is on; flipping the switch off ungates every plan.
+ * Whether third-party cloud sync is available under the current server policy.
  */
 export const isCloudSyncAllowed = (plan: UserPlan): boolean =>
-  !CLOUD_SYNC_REQUIRES_PREMIUM || isCloudSyncInPlan(plan);
+  !getRuntimeCapabilities().cloudSyncRequiresPremium || isCloudSyncInPlan(plan);
 
 /**
  * Plans that include the offline TTS audio cache — pre-downloading a book's
@@ -87,16 +89,13 @@ export const isTTSCacheInPlan = (plan: UserPlan): boolean =>
   (TTS_CACHE_PLANS as readonly UserPlan[]).includes(plan);
 
 /**
- * Master switch for the offline-audio premium paywall, mirroring
- * {@link CLOUD_SYNC_REQUIRES_PREMIUM}. ON: pre-downloading TTS audio requires a
- * {@link TTS_CACHE_PLANS} plan. Flipping it off ungates every plan. The
- * automatic playback cache (audio kept as the user listens) is unaffected —
- * only the explicit download UI is gated.
+ * Hosted-service default retained for callers and tests that inspect the
+ * product policy. Runtime access decisions use the server capability below.
  */
 export const TTS_CACHE_REQUIRES_PREMIUM = true;
 
 export const isTTSCacheAllowed = (plan: UserPlan): boolean =>
-  !TTS_CACHE_REQUIRES_PREMIUM || isTTSCacheInPlan(plan);
+  !getRuntimeCapabilities().ttsCacheRequiresPremium || isTTSCacheInPlan(plan);
 
 export const STORAGE_QUOTA_GRACE_BYTES = 10 * 1024 * 1024; // 10 MB grace
 

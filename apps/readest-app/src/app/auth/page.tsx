@@ -25,6 +25,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { handleAuthCallback, parseOAuthCallbackUrl } from '@/helpers/auth';
 import { getUserProfilePlan } from '@/utils/access';
+import { refreshCustomServerConfig } from '@/services/customServerConfig';
 import { getAppleIdAuth, Scope } from './utils/appleIdAuth';
 import { authWithCustomTab, authWithSafari } from './utils/nativeAuth';
 import WindowButtons from '@/components/WindowButtons';
@@ -36,7 +37,7 @@ interface SingleInstancePayload {
   cwd: string;
 }
 
-const WEB_AUTH_CALLBACK = `${getBaseUrl()}/auth/callback`;
+const getWebAuthCallback = () => `${getBaseUrl()}/auth/callback`;
 const DEEPLINK_CALLBACK = 'readest://auth-callback';
 const USE_APPLE_SIGN_IN = process.env['NEXT_PUBLIC_USE_APPLE_SIGN_IN'] === 'true';
 
@@ -53,6 +54,7 @@ export default function AuthPage() {
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
   const isOAuthServerRunning = useRef(false);
   const useCustomeOAuth = useRef(false);
+  const hasRedirectedAfterLogin = useRef(false);
 
   const headerRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +69,7 @@ export default function AuthPage() {
       (process.env.NODE_ENV === 'production' || appService?.isMobileApp || USE_APPLE_SIGN_IN)
     ) {
       if (appService?.isMobileApp) {
-        return isOAuth ? DEEPLINK_CALLBACK : WEB_AUTH_CALLBACK;
+        return isOAuth ? DEEPLINK_CALLBACK : getWebAuthCallback();
       }
       return DEEPLINK_CALLBACK;
     }
@@ -79,7 +81,7 @@ export default function AuthPage() {
 
   const getWebRedirectTo = () => {
     return process.env.NODE_ENV === 'production'
-      ? WEB_AUTH_CALLBACK
+      ? getWebAuthCallback()
       : `${window.location.origin}/auth/callback`;
   };
 
@@ -300,21 +302,32 @@ export default function AuthPage() {
   }, []);
 
   useEffect(() => {
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.access_token && session.user) {
-        login(session.access_token, session.user);
-        const redirectTo = new URLSearchParams(window.location.search).get('redirect');
-        const lastRedirectAtKey = 'lastRedirectAt';
-        const lastRedirectAt = parseInt(localStorage.getItem(lastRedirectAtKey) || '0', 10);
-        const now = Date.now();
-        localStorage.setItem(lastRedirectAtKey, now.toString());
-        if (now - lastRedirectAt > 3000) {
-          router.push(redirectTo ?? '/library');
-        }
+    let active = true;
+    const finishLogin = (
+      session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session'],
+    ) => {
+      if (!active || hasRedirectedAfterLogin.current || !session?.access_token || !session.user) {
+        return;
       }
+
+      hasRedirectedAfterLogin.current = true;
+      void refreshCustomServerConfig()
+        .catch(() => null)
+        .finally(() => {
+          if (!active) return;
+          login(session.access_token, session.user);
+          const redirectTo = new URLSearchParams(window.location.search).get('redirect');
+          router.replace(redirectTo ?? '/library');
+        });
+    };
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      finishLogin(session);
     });
+    void supabase.auth.getSession().then(({ data }) => finishLogin(data.session));
 
     return () => {
+      active = false;
       subscription?.subscription.unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

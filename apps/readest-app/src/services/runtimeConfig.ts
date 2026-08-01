@@ -1,13 +1,19 @@
-import { getCustomServerRuntimeConfig } from './customServerConfig';
+import {
+  getCustomServerRuntimeConfig,
+  type PublicReadestClientConfig,
+  type ReadestDeploymentMode,
+  type ReadestRuntimeCapabilities,
+} from './customServerConfig';
 
-export interface ReadestRuntimeConfig {
-  supabaseUrl?: string | undefined;
-  supabaseAnonKey?: string | undefined;
-  apiBaseUrl?: string | undefined;
-  objectStorageType?: string | undefined;
-  storageFixedQuota?: number | undefined;
-  translationFixedQuota?: number | undefined;
-}
+export type ReadestRuntimeConfig = PublicReadestClientConfig;
+
+export const DEFAULT_RUNTIME_CAPABILITIES: ReadestRuntimeCapabilities = {
+  billingEnabled: true,
+  emailInEnabled: true,
+  emailInRequiresPremium: true,
+  cloudSyncRequiresPremium: true,
+  ttsCacheRequiresPremium: true,
+};
 
 declare global {
   interface Window {
@@ -16,6 +22,30 @@ declare global {
 }
 
 const shouldUseCustomServerConfig = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri';
+
+const readBooleanEnv = (name: string, fallback: boolean): boolean => {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  throw new Error(`${name} must be true or false.`);
+};
+
+const readDeploymentMode = (): ReadestDeploymentMode => {
+  const value = process.env['READEST_DEPLOYMENT_MODE'] ?? 'hosted';
+  if (value !== 'hosted' && value !== 'self-hosted') {
+    throw new Error('READEST_DEPLOYMENT_MODE must be hosted or self-hosted.');
+  }
+  return value;
+};
+
+const getServerCapabilities = (): ReadestRuntimeCapabilities => ({
+  billingEnabled: readBooleanEnv('READEST_BILLING_ENABLED', true),
+  emailInEnabled: readBooleanEnv('READEST_EMAIL_IN_ENABLED', true),
+  emailInRequiresPremium: readBooleanEnv('READEST_EMAIL_IN_REQUIRES_PREMIUM', true),
+  cloudSyncRequiresPremium: readBooleanEnv('READEST_CLOUD_SYNC_REQUIRES_PREMIUM', true),
+  ttsCacheRequiresPremium: readBooleanEnv('READEST_TTS_CACHE_REQUIRES_PREMIUM', true),
+});
 
 export const getRuntimeConfig = (): ReadestRuntimeConfig | undefined => {
   if (typeof window === 'undefined') return undefined;
@@ -52,4 +82,16 @@ export const getServerRuntimeConfig = (): ReadestRuntimeConfig => ({
       process.env['TRANSLATION_FIXED_QUOTA'] ?? process.env['NEXT_PUBLIC_TRANSLATION_FIXED_QUOTA'];
     return raw ? parseInt(raw, 10) : undefined;
   })(),
+  deploymentMode: readDeploymentMode(),
+  capabilities: getServerCapabilities(),
 });
+
+export const getRuntimeCapabilities = (): ReadestRuntimeCapabilities => {
+  if (typeof window === 'undefined') return getServerCapabilities();
+  return getRuntimeConfig()?.capabilities ?? DEFAULT_RUNTIME_CAPABILITIES;
+};
+
+export const getDeploymentMode = (): ReadestDeploymentMode => {
+  if (typeof window === 'undefined') return readDeploymentMode();
+  return getRuntimeConfig()?.deploymentMode ?? 'hosted';
+};

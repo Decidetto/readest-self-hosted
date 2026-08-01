@@ -6,6 +6,7 @@ import {
   getCustomServerConfigStorageKey,
   loadCustomServerConfig,
   normalizeServerBaseUrl,
+  refreshCustomServerConfig,
   resolveCustomServerConfig,
   saveCustomServerConfig,
   setCustomServerConfigStorageAdapter,
@@ -220,11 +221,77 @@ describe('customServerConfig', () => {
         apiBaseUrl: 'https://api.example.com',
         supabaseUrl: 'https://supabase.example.com',
         supabaseAnonKey: 'anon-key',
+        objectStorageType: undefined,
+        storageFixedQuota: undefined,
+        translationFixedQuota: undefined,
+        deploymentMode: undefined,
+        capabilities: undefined,
         fetchedAt: 123,
       });
 
       await clearCustomServerConfig();
       expect(loadCustomServerConfig()).toBeNull();
+    });
+
+    test('refreshes and caches deployment capabilities without losing the last valid offline copy', async () => {
+      const storage = makeMemoryStorage();
+      setCustomServerConfigStorageAdapter(storage);
+      await saveCustomServerConfig({
+        serverBaseUrl: 'https://readest.example.com',
+        apiBaseUrl: 'https://readest.example.com',
+        supabaseUrl: 'https://sync.example.com',
+        supabaseAnonKey: 'anon-key',
+        deploymentMode: 'hosted',
+        capabilities: {
+          billingEnabled: true,
+          emailInEnabled: true,
+          emailInRequiresPremium: true,
+          cloudSyncRequiresPremium: true,
+          ttsCacheRequiresPremium: true,
+        },
+        fetchedAt: 1,
+      });
+
+      await refreshCustomServerConfig({
+        now: () => 2,
+        fetchImpl: vi.fn(async () =>
+          jsonResponse({
+            apiBaseUrl: 'https://readest.example.com',
+            supabaseUrl: 'https://sync.example.com',
+            supabaseAnonKey: 'anon-key',
+            deploymentMode: 'self-hosted',
+            capabilities: {
+              billingEnabled: false,
+              emailInEnabled: false,
+              emailInRequiresPremium: false,
+              cloudSyncRequiresPremium: false,
+              ttsCacheRequiresPremium: false,
+            },
+          }),
+        ) as unknown as typeof fetch,
+      });
+
+      expect(loadCustomServerConfig()).toMatchObject({
+        deploymentMode: 'self-hosted',
+        capabilities: {
+          billingEnabled: false,
+          emailInEnabled: false,
+          emailInRequiresPremium: false,
+          cloudSyncRequiresPremium: false,
+          ttsCacheRequiresPremium: false,
+        },
+        fetchedAt: 2,
+      });
+
+      const offlineCopy = loadCustomServerConfig();
+      await expect(
+        refreshCustomServerConfig({
+          fetchImpl: vi.fn(async () => {
+            throw new TypeError('offline');
+          }) as unknown as typeof fetch,
+        }),
+      ).rejects.toMatchObject({ code: 'server-not-reachable' });
+      expect(loadCustomServerConfig()).toEqual(offlineCopy);
     });
 
     test('resets session when saving a different server with resetSession', async () => {

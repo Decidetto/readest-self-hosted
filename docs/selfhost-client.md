@@ -22,19 +22,27 @@ The client normalizes the URL before saving it:
 
 ## Public Runtime Config Endpoint
 
-A self-hosted server should expose one of these public endpoints:
+The bundled self-hosted server exposes:
 
 ```text
 GET /.well-known/readest-client-config.json
 ```
 
-or:
+Compatible third-party deployments may instead expose:
 
 ```text
 GET /api/public/runtime-config
 ```
 
 The `.well-known` endpoint is tried first. If that request fails, the client tries `/api/public/runtime-config`.
+The bundled endpoint reads its values from the server's existing runtime environment, so it works with any hostname or reverse proxy without rebuilding the client.
+
+It also advertises deployment capabilities. The bundled Compose stack identifies
+itself as self-hosted, hides hosted billing and unavailable email-ingestion UI,
+and removes premium gates from alternative cloud-sync providers and offline TTS
+caching. Storage and translation quotas remain operator-controlled server
+limits. Clients cache this public policy with the selected server configuration,
+refresh it at login, and retain the last valid copy while offline.
 
 Example response:
 
@@ -127,8 +135,8 @@ Android APKs are published by the workflow. Platform-level automatic app update 
 
 ## Syncing Upstream
 
-The `sync-upstream.yml` workflow rebases `selfhost-main` on `readest/readest` `main`.
+The `sync-upstream.yml` workflow merges `readest/readest` `main` into this fork's `main` branch. It validates the merged tree before atomically updating both `main` and the compatibility alias `selfhost-main`.
 
-If the rebase has conflicts, the workflow fails and leaves the fork unchanged. Resolve the conflict locally on `selfhost-main`, run the focused self-host tests and safety scan, then push the resolved branch.
+If the merge or any validation step fails, neither remote branch is updated. Resolve the conflict on a branch based on this fork's `main`, run the focused self-host tests and safety scan, and submit the repair through the normal pull-request flow.
 
-The workflow intentionally uses `git rebase upstream/main`; it does not force-overwrite downstream changes.
+The workflow intentionally uses a merge instead of rebasing the long-lived downstream patch stack. This preserves published history, avoids force-pushes, and limits future conflicts to upstream changes made since the previous successful sync.

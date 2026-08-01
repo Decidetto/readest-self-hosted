@@ -13,13 +13,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rebase-selfhost-main:
+  merge-upstream:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: selfhost-main
+          ref: main
           fetch-depth: 0
           submodules: recursive
 
@@ -28,13 +28,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Rebase on upstream main
+      - name: Merge upstream main
         run: |
           set -euo pipefail
           git remote add upstream https://github.com/readest/readest.git
           git fetch --no-recurse-submodules upstream main --tags
-          git checkout selfhost-main
-          git rebase upstream/main
+          git checkout main
+          git merge --no-edit upstream/main
 
       - name: Update submodules
         run: |
@@ -64,14 +64,18 @@ jobs:
       - name: Test selfhost client config
         run: |
           cd apps/readest-app
-          pnpm exec vitest run \
-            src/__tests__/services/customServerConfig.test.ts \
-            src/__tests__/services/environment.test.ts \
-            src/__tests__/helpers/auth.test.ts \
+          tests=(
+            src/__tests__/services/customServerConfig.test.ts
+            src/__tests__/services/environment.test.ts
+            src/__tests__/helpers/auth.test.ts
+            src/__tests__/helpers/updater.test.ts
+            src/__tests__/libs/sync.test.ts
             src/__tests__/services/command-registry-extended.test.ts
+          )
+          pnpm exec vitest run "${tests[@]}"
 
       - name: Run public fork safety scan
         run: bash scripts/scan-public-fork-safety.sh
 
-      - name: Push rebased branch
-        run: git push origin HEAD:selfhost-main
+      - name: Push synchronized branches
+        run: git push --atomic origin HEAD:main HEAD:selfhost-main
