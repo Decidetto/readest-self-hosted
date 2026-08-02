@@ -15,6 +15,7 @@ import {
   getGroupDisplayName,
   expandBookshelfSelection,
   buildGroupNameUpdatedAt,
+  resolveCurrentShelfBooks,
   withTimeRemainingLast,
 } from '../../app/library/utils/libraryUtils';
 import { Book, BooksGroup } from '../../types/book';
@@ -249,6 +250,81 @@ describe('createBookGroups', () => {
       // Group mode just returns filtered books - actual grouping is in generateBookshelfItems
       expect(result).toHaveLength(2);
     });
+  });
+
+  describe('groupBy: tag and subject', () => {
+    it('groups normalized tags and every supported subject metadata shape', () => {
+      const tagged = createMockBook({ hash: 'tagged', tags: [' Fiction ', 'Favorite', 'Fiction'] });
+      const untagged = createMockBook({ hash: 'untagged', tags: ['  '] });
+
+      const tagResult = createBookGroups([tagged, untagged], LibraryGroupByType.Tag);
+      const tagGroups = tagResult.filter((item): item is BooksGroup => 'books' in item);
+      const standalone = tagResult.filter((item): item is Book => 'format' in item);
+
+      expect(tagGroups.map(({ name }) => name)).toEqual(['Fiction', 'Favorite']);
+      expect(
+        tagGroups.every(({ books }) => books.map(({ hash }) => hash).join() === 'tagged'),
+      ).toBe(true);
+      expect(standalone.map(({ hash }) => hash)).toEqual(['untagged']);
+
+      const scalar = createMockBook({ hash: 'scalar', metadata: { subject: 'History' } });
+      const array = createMockBook({
+        hash: 'array',
+        metadata: { subject: ['History', 'Science'] },
+      });
+      const contributors = createMockBook({
+        hash: 'contributors',
+        metadata: {
+          subject: [{ name: { en: 'Science' } }, { name: { en: 'Biography' } }],
+        },
+      });
+
+      const subjectGroups = createBookGroups(
+        [scalar, array, contributors],
+        LibraryGroupByType.Subject,
+      ).filter((item): item is BooksGroup => 'books' in item);
+
+      expect(subjectGroups.find(({ name }) => name === 'History')?.books).toHaveLength(2);
+      expect(subjectGroups.find(({ name }) => name === 'Science')?.books).toHaveLength(2);
+      expect(subjectGroups.find(({ name }) => name === 'Biography')?.books).toHaveLength(1);
+    });
+  });
+});
+
+describe('resolveCurrentShelfBooks', () => {
+  const books = [
+    createMockBook({ hash: 'one', groupName: 'Fiction', tags: ['Favorite'] }),
+    createMockBook({ hash: 'two', groupName: 'Fiction/Classics', tags: ['Favorite', 'Classic'] }),
+    createMockBook({ hash: 'three', groupName: 'Fictional', metadata: { subject: ['History'] } }),
+    createMockBook({ hash: 'deleted', deletedAt: 1, tags: ['Favorite'] }),
+  ];
+
+  it('scopes root, virtual, manual, and invalid shelves without duplicates', () => {
+    expect(resolveCurrentShelfBooks(books, LibraryGroupByType.Tag).map(({ hash }) => hash)).toEqual(
+      ['one', 'two', 'three'],
+    );
+    const favorite = createBookGroups(books, LibraryGroupByType.Tag).find(
+      (item): item is BooksGroup => 'books' in item && item.name === 'Favorite',
+    )!;
+    const history = createBookGroups(books, LibraryGroupByType.Subject).find(
+      (item): item is BooksGroup => 'books' in item && item.name === 'History',
+    )!;
+
+    expect(
+      resolveCurrentShelfBooks(books, LibraryGroupByType.Tag, favorite.id).map(({ hash }) => hash),
+    ).toEqual(['one', 'two']);
+    expect(
+      resolveCurrentShelfBooks(books, LibraryGroupByType.Subject, history.id).map(
+        ({ hash }) => hash,
+      ),
+    ).toEqual(['three']);
+    expect(
+      resolveCurrentShelfBooks(books, LibraryGroupByType.Group, 'group-id', 'Fiction').map(
+        ({ hash }) => hash,
+      ),
+    ).toEqual(['one', 'two']);
+    expect(resolveCurrentShelfBooks(books, LibraryGroupByType.Tag, 'missing')).toEqual([]);
+    expect(resolveCurrentShelfBooks(books, LibraryGroupByType.None, 'stray')).toEqual([]);
   });
 });
 
