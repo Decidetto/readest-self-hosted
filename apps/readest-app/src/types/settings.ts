@@ -90,6 +90,11 @@ export interface ReadwiseSettings {
   accessToken: string;
   lastSyncedAt: number;
   /**
+   * Send the book cover with pushed highlights (image_url). Optional so
+   * settings persisted before this option existed default to enabled.
+   */
+  includeCoverImage?: boolean;
+  /**
    * Advanced: override the Readwise API base URL (e.g. for a self-hosted,
    * Readwise-compatible receiver). When unset or blank, the official
    * `READWISE_API_BASE_URL` is used.
@@ -332,6 +337,16 @@ export interface SystemSettings {
    * `BACKUP_SETTINGS_BLACKLIST`.
    */
   autoImportFolders?: string[];
+  /**
+   * The subset of {@link autoImportFolders} the user imported with "Import all
+   * into library" (flatten). Auto-imported books from those folders go straight
+   * to the library root; every other watched folder mirrors its subfolders as
+   * groups, matching the dialog's default "Create groups from subfolders" —
+   * which is also what a folder watched before this list existed falls back to.
+   * Device-local, and excluded from cloud settings backups alongside
+   * {@link autoImportFolders}.
+   */
+  autoImportFlattenFolders?: string[];
 
   keepLogin: boolean;
   alwaysOnTop: boolean;

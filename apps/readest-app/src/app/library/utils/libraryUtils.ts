@@ -155,6 +155,29 @@ export const expandBookshelfSelection = (ids: string[], items: (Book | BooksGrou
   return [...hashes];
 };
 
+/**
+ * The books a bulk Download should actually fetch (#5244): the selection
+ * expanded through {@link expandBookshelfSelection}, narrowed to the books that
+ * live in the cloud but not on this device. The predicate matches the per-book
+ * "Download Book" affordance — a feed book has no file to fetch (#5307), and a
+ * book that was never uploaded or is already local has nothing to pull down.
+ */
+export const selectDownloadableBooks = (
+  ids: string[],
+  items: (Book | BooksGroup)[],
+  books: Book[],
+): Book[] => {
+  const hashes = new Set(expandBookshelfSelection(ids, items));
+  return books.filter(
+    (book) =>
+      hashes.has(book.hash) &&
+      !book.deletedAt &&
+      !isFeedBook(book) &&
+      !!book.uploadedAt &&
+      !book.downloadedAt,
+  );
+};
+
 // Calibre custom column names and values, flattened for searching (#4811).
 const getCalibreColumnsText = (item: Book) =>
   (item.metadata?.calibreColumns ?? [])
@@ -886,6 +909,35 @@ export const pickFresherCover = (local: CoverFields, synced: CoverFields): Cover
   coverMs(synced.coverUpdatedAt) > coverMs(local.coverUpdatedAt)
     ? { coverHash: synced.coverHash, coverUpdatedAt: synced.coverUpdatedAt }
     : { coverHash: local.coverHash, coverUpdatedAt: local.coverUpdatedAt };
+
+type MetadataFields = Pick<Book, 'title' | 'author' | 'tags' | 'metadata' | 'metadataUpdatedAt'>;
+
+/**
+ * Field-level last-writer-wins for the metadata group (title, author, tags,
+ * metadata), by `metadataUpdatedAt` (issue #5438). Mirrors
+ * {@link pickFresherReadingStatus} / {@link pickFresherCover}: the row's
+ * `updatedAt` is dominated by page-turn progress, so a metadata edit must be
+ * resolved by its own timestamp or reading the book on another device would
+ * clobber it. Returns null when neither side's stamp is strictly fresher —
+ * notably the unstamped legacy case — so the caller keeps the row-level
+ * winner's fields (legacy behavior) instead of grafting.
+ */
+export const pickFresherMetadata = (
+  local: MetadataFields,
+  synced: MetadataFields,
+): MetadataFields | null => {
+  const localMs = local.metadataUpdatedAt ?? 0;
+  const syncedMs = synced.metadataUpdatedAt ?? 0;
+  if (localMs === syncedMs) return null;
+  const winner = localMs > syncedMs ? local : synced;
+  return {
+    title: winner.title,
+    author: winner.author,
+    tags: winner.tags,
+    metadata: winner.metadata,
+    metadataUpdatedAt: winner.metadataUpdatedAt,
+  };
+};
 
 /**
  * Resolve the ordered list of context-menu item ids for a book from its state.

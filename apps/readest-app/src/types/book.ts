@@ -131,6 +131,10 @@ export interface Book {
   primaryLanguage?: string;
 
   metadata?: BookMetadata;
+  // Field-level LWW timestamp for the metadata group (title, author, tags,
+  // metadata), so a page-turn that wins whole-row LWW on updatedAt cannot
+  // clobber a metadata edit (mirrors readingStatusUpdatedAt / coverUpdatedAt).
+  metadataUpdatedAt?: number | null;
 }
 
 export interface BookGroupType {
@@ -339,10 +343,17 @@ export interface TranslatorConfig {
   ttsReadAloudText: string;
 }
 
+// Markdown and plain text render the note template; JSON emits the
+// machine-readable file that Readest itself can import back (#5400).
+export type NoteExportFormat = 'markdown' | 'text' | 'json';
+
 export interface NoteExportConfig {
   includeTitle: boolean;
   includeAuthor: boolean;
   includeDate: boolean;
+  // Include a public cover image link; requires publishing the cover to the
+  // public bucket (sign-in) unless the book already has a public cover URL.
+  includeCoverImage: boolean;
   includeChapterTitles: boolean;
   includeQuotes: boolean;
   includeNotes: boolean;
@@ -353,7 +364,10 @@ export interface NoteExportConfig {
   noteSeparator: string;
   useCustomTemplate: boolean;
   customTemplate: string;
+  // Superseded by `exportFormat`; kept so configs written before the JSON
+  // option existed still pick the right format on load.
   exportAsPlainText: boolean;
+  exportFormat: NoteExportFormat;
   // Highlight colors/styles to omit from the export. Empty arrays export
   // everything; storing exclusions keeps colors/styles added later included
   // by default (#4801).

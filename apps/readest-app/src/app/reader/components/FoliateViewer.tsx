@@ -92,10 +92,7 @@ import Spinner from '@/components/Spinner';
 import KOSyncConflictResolver from './KOSyncResolver';
 import ImageViewer from './ImageViewer';
 import TableViewer from './TableViewer';
-import {
-  getTTSMiniPlayerBottomOffset,
-  TTS_MINI_PLAYER_HEIGHT,
-} from '../utils/ttsMiniPlayerPosition';
+import { getTTSMiniPlayerClearance } from '../utils/ttsMiniPlayerPosition';
 
 declare global {
   interface Window {
@@ -859,13 +856,10 @@ const FoliateViewer: React.FC<{
     // full-width blank bar that steals space from the book text.
     const showBottomFooter = footerReservesBand(viewSettings) && !viewSettings.vertical;
     const moreTopInset = showTopHeader ? Math.max(0, 16 - insets.top) : 0;
-    // Resting position (bottom bar dismissed): the card stacks above the
-    // footer band, so the reserved clearance is its bottom offset plus the
-    // card height.
+    // Only the persistent 'minimal' card reserves a band; the 'full' one
+    // auto-hides with the toolbar and overlaps instead (#5310).
     const miniPlayerClearance = viewState?.ttsEnabled
-      ? getTTSMiniPlayerBottomOffset(viewSettings) +
-        TTS_MINI_PLAYER_HEIGHT +
-        gridInsets.bottom * 0.33
+      ? getTTSMiniPlayerClearance(viewSettings, gridInsets.bottom * 0.33)
       : 0;
     const moreBottomInset = showBottomFooter
       ? Math.max(0, Math.max(miniPlayerClearance, 16) - insets.bottom)
@@ -886,7 +880,10 @@ const FoliateViewer: React.FC<{
       const footerVisible = showBottomFooter;
       const safeBottomPadding = appService?.hasSafeAreaInset ? gridInsets.bottom * 0.33 : 0;
       const footerBarHeight = safeBottomPadding + viewSettings.marginBottomPx;
-      const scrollTop = headerVisible ? gridInsets.top + viewSettings.marginTopPx : 0;
+      // topMargin, not the raw margin sum: it carries the 16px moreTopInset
+      // floor, so a negative top margin keeps the scroll viewport glued to the
+      // lifted header band instead of running under it (#5303).
+      const scrollTop = headerVisible ? topMargin : 0;
       const scrollBottom = footerVisible
         ? Math.max(footerBarHeight, miniPlayerClearance)
         : miniPlayerClearance;
@@ -1039,6 +1036,8 @@ const FoliateViewer: React.FC<{
     viewSettings?.scrolled,
     viewSettings?.noContinuousScroll,
     viewState?.ttsEnabled,
+    // Switching Player Style changes whether a band is reserved at all.
+    viewSettings?.ttsPlayerStyle,
     // footerReservesBand inputs: the band must collapse/return live when the
     // user flips these settings.
     viewSettings?.showStickyProgressBar,
