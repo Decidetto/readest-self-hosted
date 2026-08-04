@@ -216,6 +216,15 @@ export const resolveURL = (url: string, relativeTo: string): string => {
   }
 };
 
+export const versionOPDSImageURL = (url: string, updated?: string): string => {
+  if (!updated) return url;
+  const fragmentIndex = url.indexOf('#');
+  const imageURL = fragmentIndex === -1 ? url : url.slice(0, fragmentIndex);
+  const fragment = fragmentIndex === -1 ? '' : url.slice(fragmentIndex);
+  const separator = imageURL.includes('?') ? '&' : '?';
+  return `${imageURL}${separator}readest_updated=${encodeURIComponent(updated)}${fragment}`;
+};
+
 export const validateOPDSURL = async (
   url: string,
   username?: string,

@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { CachedImage } from '@/components/CachedImage';
 import { OPDSPublication, REL } from '@/types/opds';
-import { formatContributorName } from '../utils/opdsUtils';
+import { formatContributorName, versionOPDSImageURL } from '../utils/opdsUtils';
 
 interface PublicationCardProps {
   publication: OPDSPublication;
@@ -35,7 +35,9 @@ export function PublicationCard({
   }, [publication.images]);
 
   const imageLink = coverImage || thumbnailImage;
-  const imageUrl = imageLink?.href ? resolveURL(imageLink.href, baseURL) : null;
+  const imageUrl = imageLink?.href
+    ? versionOPDSImageURL(resolveURL(imageLink.href, baseURL), publication.metadata?.updated)
+    : null;
 
   const authors = useMemo(() => {
     const author = publication.metadata?.author;

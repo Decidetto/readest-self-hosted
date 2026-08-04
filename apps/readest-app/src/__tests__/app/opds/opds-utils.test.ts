@@ -59,6 +59,7 @@ import {
   getOPDSNavLink,
   getUnaddedPopularCatalogs,
   formatContributorName,
+  versionOPDSImageURL,
 } from '@/app/opds/utils/opdsUtils';
 import type { OPDSBaseLink, OPDSCatalog } from '@/types/opds';
 import { fetchWithAuth } from '@/app/opds/utils/opdsReq';
@@ -79,6 +80,20 @@ describe('opdsUtils', () => {
 
     it('leaves names without pipes unchanged', () => {
       expect(formatContributorName('John Walter Doe')).toBe('John Walter Doe');
+    });
+  });
+
+  describe('versionOPDSImageURL', () => {
+    it('uses the publication update time to invalidate a changed cover', () => {
+      expect(
+        versionOPDSImageURL('https://example.com/cover/462?size=large', '2026-08-02T22:02:25Z'),
+      ).toBe('https://example.com/cover/462?size=large&readest_updated=2026-08-02T22%3A02%3A25Z');
+    });
+
+    it('leaves the image URL unchanged when the publication has no update time', () => {
+      expect(versionOPDSImageURL('https://example.com/cover/462', undefined)).toBe(
+        'https://example.com/cover/462',
+      );
     });
   });
 

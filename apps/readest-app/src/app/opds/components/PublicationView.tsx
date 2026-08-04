@@ -14,7 +14,12 @@ import { getImportErrorMessage, ImportError } from '@/services/errors';
 import { eventDispatcher } from '@/utils/event';
 import { navigateToReader } from '@/utils/nav';
 import { CachedImage } from '@/components/CachedImage';
-import { groupByArray, getOPDSNavLink, formatContributorName } from '../utils/opdsUtils';
+import {
+  groupByArray,
+  getOPDSNavLink,
+  formatContributorName,
+  versionOPDSImageURL,
+} from '../utils/opdsUtils';
 import { getOPDSDescriptionHtml } from '../utils/opdsContent';
 import Dropdown from '@/components/Dropdown';
 import MenuItem from '@/components/MenuItem';
@@ -88,7 +93,9 @@ export function PublicationView({
   // never previews artwork the library won't end up showing (issue #5270).
   const coverHref = useMemo(() => getOPDSCoverHref(publication), [publication]);
 
-  const imageUrl = coverHref ? resolveURL(coverHref, baseURL) : null;
+  const imageUrl = coverHref
+    ? versionOPDSImageURL(resolveURL(coverHref, baseURL), publication.metadata?.updated)
+    : null;
 
   const authors = useMemo(() => {
     const author = publication.metadata?.author;
