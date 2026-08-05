@@ -16,6 +16,7 @@ import { useParallelViewStore } from '@/store/parallelViewStore';
 import { useMouseEvent, useTouchEvent, useOpenMediaEvent } from '../hooks/useIframeEvents';
 import { useCapturedTurn, applyPageTurnAttributes } from '../hooks/useCapturedTurn';
 import { useBrightnessGesture } from '../hooks/useBrightnessGesture';
+import { registerBookmarkPullDoc } from '../utils/bookmarkPullGesture';
 import BrightnessOverlay from './BrightnessOverlay';
 import { usePagination, viewPagination } from '../hooks/usePagination';
 import { useFoliateEvents } from '../hooks/useFoliateEvents';
@@ -25,6 +26,7 @@ import { useBackgroundTexture } from '@/hooks/useBackgroundTexture';
 import { useAutoFocus } from '@/hooks/useAutoFocus';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useEinkMode } from '@/hooks/useEinkMode';
+import { bookOrbitProgressProvider } from '../hooks/bookOrbitProgressProvider';
 import { useKOSync } from '../hooks/useKOSync';
 import { useFileSync } from '../hooks/useFileSync';
 import {
@@ -179,6 +181,7 @@ const FoliateViewer: React.FC<{
   useProgressAutoSave(bookKey);
   useBookCoverAutoSave(bookKey);
   const { syncState, conflictDetails, resolveWithLocal, resolveWithRemote } = useKOSync(bookKey);
+  const bookOrbitSync = useKOSync(bookKey, bookOrbitProgressProvider);
   useFileSync(bookKey);
   useTextTranslation(bookKey, viewRef.current);
 
@@ -449,6 +452,7 @@ const FoliateViewer: React.FC<{
         detail.doc.addEventListener('touchcancel', handleTouchCancel.bind(null, bookKey));
         registerBrightnessListeners(detail.doc);
         registerSpeedListeners(detail.doc);
+        registerBookmarkPullDoc(bookKey, detail.doc);
       }
     }
   };
@@ -1097,6 +1101,14 @@ const FoliateViewer: React.FC<{
           onResolveWithLocal={resolveWithLocal}
           onResolveWithRemote={resolveWithRemote}
           onClose={resolveWithLocal}
+        />
+      )}
+      {bookOrbitSync.syncState === 'conflict' && bookOrbitSync.conflictDetails && (
+        <KOSyncConflictResolver
+          details={bookOrbitSync.conflictDetails}
+          onResolveWithLocal={bookOrbitSync.resolveWithLocal}
+          onResolveWithRemote={bookOrbitSync.resolveWithRemote}
+          onClose={bookOrbitSync.resolveWithLocal}
         />
       )}
     </>
